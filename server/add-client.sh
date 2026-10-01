@@ -9,7 +9,8 @@
 set -euo pipefail
 
 NAME="${1:?用法: sudo ./add-client.sh <设备名> [隧道IP]}"
-NAME="$(echo "$NAME" | tr -c 'a-zA-Z0-9_-' '-')"   # 文件名安全化
+# 文件名安全化（printf 避免 echo 的换行被 tr 转成 '-'，否则每个设备名都会多出后缀 '-'）
+NAME="$(printf '%s' "$NAME" | LC_ALL=C tr -c 'a-zA-Z0-9_-' '-')"
 
 [ "$(id -u)" = 0 ] || { echo "❌ 请用 root 运行"; exit 1; }
 command -v wg >/dev/null || { echo "❌ 未安装 wireguard-tools，请先运行 install.sh"; exit 1; }
@@ -37,8 +38,9 @@ chmod 600 "$CLIENT_KEY"
 IP="${2:-}"
 if [ -z "$IP" ]; then
   # 用 dump 格式取各 peer 的 allowed-ips（第4列，可能含逗号多 IP）
+  # 注意: 全新服务器上首个客户端时 grep 无匹配返回 1，需 || true，否则 set -e 会中断
   USED=$(wg show wg0 dump | awk -F'\t' '{print $4}' | tr ',' '\n' \
-         | grep -oE '([0-9]+\.){3}[0-9]+' | sort -t. -k4 -n)
+         | grep -oE '([0-9]+\.){3}[0-9]+' | sort -t. -k4 -n || true)
   for i in $(seq 2 254); do
     CAND="${SUBNET_PREFIX}.${i}"
     if ! echo "$USED" | grep -qx "$CAND"; then IP="$CAND"; break; fi
